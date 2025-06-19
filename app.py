@@ -4,6 +4,7 @@ import pandas as pd
 from urllib.request import urlopen
 import io
 import webbrowser
+import ast
 
 class NewsApp:
     def __init__(self):
@@ -31,7 +32,7 @@ class NewsApp:
         intro_label = tk.Label(category_frame, text=" Please click on the below category of your interest:", font=("Helvetica", 10), bg='black', fg='white')
         intro_label.pack(pady=5)
 
-        categories = self.df['category'].apply(lambda x: eval(x)[0]).unique()
+        categories = self.df['category'].apply(lambda x: ast.literal_eval(x)[0]).unique()
         for category in categories:
             category_button = tk.Button(category_frame,width=15, height= 4 , text=category.capitalize(),
                                         command=lambda cat=category: self.show_category(cat))
@@ -39,7 +40,7 @@ class NewsApp:
 
     def show_category(self, category):
         self.clear_frame()
-        category_df = self.df[self.df['category'].apply(lambda x: eval(x)[0]) == category]
+        category_df = self.df[self.df['category'].apply(lambda x: ast.literal_eval(x)[0]) == category]
 
         self.current_category = category
         self.current_index = 0
@@ -75,7 +76,7 @@ class NewsApp:
 
     def navigate(self, delta):
         self.current_index += delta
-        category_df = self.df[self.df['category'].apply(lambda x: eval(x)[0]) == self.current_category]
+        category_df = self.df[self.df['category'].apply(lambda x: ast.literal_eval(x)[0]) == self.current_category]
         if self.current_index < 0:
             self.current_index = 0
         elif self.current_index >= len(category_df):
@@ -110,7 +111,7 @@ class NewsApp:
         self.news_summary.config(text=category_df.iloc[idx]['summaries_en'])
 
     def read_more(self):
-        link = self.df[(self.df['category'].apply(lambda x: eval(x)[0]) == self.current_category)].iloc[self.current_index]['link']
+        link = self.df[(self.df['category'].apply(lambda x: ast.literal_eval(x)[0]) == self.current_category)].iloc[self.current_index]['link']
         # open browser
         webbrowser.open(link)
 
