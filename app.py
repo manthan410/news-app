@@ -1,9 +1,22 @@
 import tkinter as tk
-from PIL import Image, ImageTk
-import pandas as pd
+try:
+    from PIL import Image, ImageTk
+    PIL_AVAILABLE = True
+except ImportError:  # Pillow is optional
+    Image = None
+    ImageTk = None
+    PIL_AVAILABLE = False
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:  # Pandas is optional
+    pd = None
+    PANDAS_AVAILABLE = False
+import csv
 from urllib.request import urlopen
 import io
 import webbrowser
+import ast
 
 class NewsApp:
     def __init__(self):
@@ -20,7 +33,21 @@ class NewsApp:
         self.root.configure(background='black')
 
     def load_news_items(self):
-        self.df = pd.read_csv('merged_summ_news_final.csv', index_col=0)
+        if PANDAS_AVAILABLE:
+            self.df = pd.read_csv('merged_summ_news_final.csv', index_col=0)
+            if 'category' in self.df.columns:
+                self.df['category'] = self.df['category'].apply(ast.literal_eval)
+        else:
+            self.df = []
+            with open('merged_summ_news_final.csv', newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if 'category' in row and row['category']:
+                        try:
+                            row['category'] = ast.literal_eval(row['category'])
+                        except Exception:
+                            row['category'] = [row['category']]
+                    self.df.append(row)
 
     def show_categories(self):
         self.clear_frame()
@@ -31,7 +58,10 @@ class NewsApp:
         intro_label = tk.Label(category_frame, text=" Please click on the below category of your interest:", font=("Helvetica", 10), bg='black', fg='white')
         intro_label.pack(pady=5)
 
-        categories = self.df['category'].apply(lambda x: eval(x)[0]).unique()
+        if PANDAS_AVAILABLE:
+            categories = self.df['category'].apply(lambda x: x[0] if isinstance(x, (list, tuple)) else ast.literal_eval(x)[0]).unique()
+        else:
+            categories = sorted({row['category'][0] if isinstance(row['category'], list) else row['category'] for row in self.df})
         for category in categories:
             category_button = tk.Button(category_frame,width=15, height= 4 , text=category.capitalize(),
                                         command=lambda cat=category: self.show_category(cat))
@@ -39,7 +69,10 @@ class NewsApp:
 
     def show_category(self, category):
         self.clear_frame()
-        category_df = self.df[self.df['category'].apply(lambda x: eval(x)[0]) == category]
+        if PANDAS_AVAILABLE:
+            category_df = self.df[self.df['category'].apply(lambda x: x[0] if isinstance(x, (list, tuple)) else ast.literal_eval(x)[0]) == category]
+        else:
+            category_df = [row for row in self.df if (row['category'][0] if isinstance(row['category'], list) else row['category']) == category]
 
         self.current_category = category
         self.current_index = 0
@@ -75,7 +108,10 @@ class NewsApp:
 
     def navigate(self, delta):
         self.current_index += delta
-        category_df = self.df[self.df['category'].apply(lambda x: eval(x)[0]) == self.current_category]
+        if PANDAS_AVAILABLE:
+            category_df = self.df[self.df['category'].apply(lambda x: x[0] if isinstance(x, (list, tuple)) else ast.literal_eval(x)[0]) == self.current_category]
+        else:
+            category_df = [row for row in self.df if (row['category'][0] if isinstance(row['category'], list) else row['category']) == self.current_category]
         if self.current_index < 0:
             self.current_index = 0
         elif self.current_index >= len(category_df):
@@ -86,31 +122,45 @@ class NewsApp:
 
         print("Category:", self.current_category)
         print("Index:", self.current_index)
-        # Load and display image
-        try:
-            image_url = category_df.iloc[idx]['image_url']
-            raw_data = urlopen(image_url).read()
-            image = Image.open(io.BytesIO(raw_data))
-            image = image.resize((350, 250))  # Resize the image as needed
-            photo = ImageTk.PhotoImage(image)
-            self.news_image.config(image=photo)
-            self.news_image.image = photo  # To prevent garbage collection
-        except:
-            img_url = 'https://www.hhireb.com/wp-content/uploads/2019/08/default-no-img.jpg'
-            raw_data = urlopen(img_url).read()
-            image = Image.open(io.BytesIO(raw_data)).resize((350, 250))
-            photo = ImageTk.PhotoImage(image)
-            self.news_image.config(image=photo)
-            self.news_image.image = photo
+        # Load and display image if Pillow is available
+        if PIL_AVAILABLE:
+            try:
+                image_url = (category_df.iloc[idx]['image_url']
+                             if PANDAS_AVAILABLE else category_df[idx]['image_url'])
+                raw_data = urlopen(image_url).read()
+                image = Image.open(io.BytesIO(raw_data))
+                image = image.resize((350, 250))  # Resize the image as needed
+                photo = ImageTk.PhotoImage(image)
+                self.news_image.config(image=photo)
+                self.news_image.image = photo  # To prevent garbage collection
+            except Exception:
+                img_url = 'https://www.hhireb.com/wp-content/uploads/2019/08/default-no-img.jpg'
+                raw_data = urlopen(img_url).read()
+                image = Image.open(io.BytesIO(raw_data)).resize((350, 250))
+                photo = ImageTk.PhotoImage(image)
+                self.news_image.config(image=photo)
+                self.news_image.image = photo
+        else:
+            # Fallback if Pillow is not installed
+            self.news_image.config(text='[Image unavailable]', image='')
+            self.news_image.image = None
 
         # Update source name label with the source information
-        source_info = "source: " + category_df.iloc[idx]['source_id']
+        if PANDAS_AVAILABLE:
+            row = category_df.iloc[idx]
+        else:
+            row = category_df[idx]
+        source_info = "source: " + row['source_id']
         self.source_name.config(text=source_info)
-        self.news_title.config(text=category_df.iloc[idx]['title_en'])
-        self.news_summary.config(text=category_df.iloc[idx]['summaries_en'])
+        self.news_title.config(text=row['title_en'])
+        self.news_summary.config(text=row['summaries_en'])
 
     def read_more(self):
-        link = self.df[(self.df['category'].apply(lambda x: eval(x)[0]) == self.current_category)].iloc[self.current_index]['link']
+        if PANDAS_AVAILABLE:
+            link = self.df[(self.df['category'].apply(lambda x: x[0] if isinstance(x, (list, tuple)) else ast.literal_eval(x)[0]) == self.current_category)].iloc[self.current_index]['link']
+        else:
+            category_items = [row for row in self.df if (row['category'][0] if isinstance(row['category'], list) else row['category']) == self.current_category]
+            link = category_items[self.current_index]['link']
         # open browser
         webbrowser.open(link)
 
